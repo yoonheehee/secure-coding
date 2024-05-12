@@ -14,6 +14,7 @@ conda create -n secure_coding python=3.9
 conda activate secure_coding
 pip install streamlit
 pip install fastapi uvicorn
+pip install bcrypt
 ```
 
 ## usage
@@ -22,7 +23,7 @@ run the front and backend processes.
 
 ```
 streamlit run streamlit_app.py
-uvicorn fastapi_app:app --reload
+uvicorn fastapi_app:app —reload
 ```
 
 if you want to test on external machine, you can utilize the ngrok to forwarding the url.

@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from typing import List, Optional
 import sqlite3
+import bcrypt
 
 app = FastAPI()
 
@@ -64,13 +66,21 @@ def register_admin(conn, username, password, full_name):
 
 def authenticate_user(conn, username, password):
     cursor = conn.cursor()
-    cursor.execute(f'SELECT * FROM users WHERE username = "{username}" AND password = "{password}"')
-    user = cursor.fetchone()
-    if user:
-        user_info = {"username": user[1], "password": user[2], "role": user[3], "full_name": user[4], "address": user[5], "payment_info": user[6]}
-        return {"message": f"Welcome back, {username}!", "user": user_info}
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    cursor.execute('SELECT password FROM users WHERE username = ?', (username,))
+    stored_password = cursor.fetchone()
+    if stored_password and bcrypt.checkpw(password.encode('utf-8'), stored_password[0]):
+        cursor.execute(f'SELECT * FROM users WHERE username = "{username}"')
+        user = cursor.fetchone()
+        if user:
+            user_info = {"username": user[1], "password": user[2], "role": user[3], "full_name": user[4],
+                         "address": user[5], "payment_info": user[6]}
+            return {"message": f"Welcome back, {username}!", "user": user_info}
+        else:
+            raise HTTPException(status_code=401, detail="Invalid username or password")
     else:
         raise HTTPException(status_code=401, detail="Invalid username or password")
+
 
 def get_all_products(conn):
     cursor = conn.cursor()
@@ -153,13 +163,26 @@ async def startup_event():
     conn = create_connection()
     create_tables(conn)
     if not get_user_by_username(conn, "admin"):
-        register_admin(conn, "admin", "admin", "Admin User")
+        hashed_password = bcrypt.hashpw("admin*".encode('utf-8'), bcrypt.gensalt())
+        register_admin(conn, "admin", hashed_password, "Admin User")
     conn.close()
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    # 로그에 에러 기록
+    print(f"Unexpected error: {exc}")
+    # 사용자에게는 일반적인 오류 메시지 반환
+    return JSONResponse(
+        status_code=500,
+        content={"message": "An unexpected error occurred. Please try again later."},
+    )
+
 
 @app.get("/register")
 async def register_user(username: str, password: str, role: str, full_name: str, address: Optional[str] = None, payment_info: Optional[str] = None):
     conn = create_connection()
-    result = add_user(conn, username, password, role, full_name, address, payment_info)
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    result = add_user(conn, username, hashed_password, role, full_name, address, payment_info)
     conn.close()
     return result
 
